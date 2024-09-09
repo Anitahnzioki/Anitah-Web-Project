@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Income Form</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        .action-buttons button {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <form id="addIncomeForm">
+        <input type="hidden" name="id" id="income_id">
+        <input type="text" name="user_id" id="user_id" placeholder="Enter User ID" required>
+        <input type="text" name="source" placeholder="Enter Source" required>
+        <input type="number" name="amount" placeholder="Enter Amount" required>
+        <input type="date" name="date" id="dateField" required>
+        <button type="submit">Add Income</button>
+    </form>
+
+    <h2>Income Records</h2>
+    <table id="incomeTable">
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Amount</th>
+                <th>Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="incomeItems">
+            <!-- Data will be populated here -->
+        </tbody>
+    </table>
+
+    <script>
+        // Custom JWT Decoder
+        const decodeJWT = (token) => {
+            try {
+                const base64Url = token.split(".")[1];
+                const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+                const jsonPayload = decodeURIComponent(
+                    atob(base64)
+                        .split("")
+                        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+                        .join("")
+                );
+                return JSON.parse(jsonPayload);
+            } catch (e) {
+                console.error("Error decoding JWT:", e);
+                return null;
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('addIncomeForm');
+            const incomeTableBody = document.getElementById('incomeItems');
+            const userIdInput = document.getElementById('user_id');
+            const incomeIdInput = document.getElementById('income_id');
+            const dateField = document.getElementById('dateField');
+            let editRowId = null;
+
+            // Set today's date as the default value for the date input
+            const today = new Date().toISOString().split('T')[0];
+            dateField.value = today;
+
+            // Decode the token stored in localStorage
+            const token = localStorage.getItem('token');
+            let decodedToken;
+
+            if (token) {
+                decodedToken = decodeJWT(token);  // Use custom decode function
+                const userId = decodedToken?.id;   // Assuming the token payload has an id field
+
+                if (userId) {
+                    userIdInput.value = userId;
+                    fetchIncome(userId);  // Fetch income based on the decoded user ID
+                }
+            } else {
+                alert('No token found. Please log in.');
+            }
+
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault(); 
+
+                // Collect form data
+                const formData = new FormData(form);
+                const data = {};
+                formData.forEach((value, key) => {
+                    data[key] = value;
+                });
+
+                let response;
+
+                try {
+                    // Determine whether to add or update income
+                    if (editRowId) {
+                        // Update existing income
+                        response = await fetch(`http://localhost:4000/income/${editRowId}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(data),
+                        });
+                    } else {
+                        // Add new income
+                        response = await fetch('http://localhost:4000/income', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(data),
+                        });
+                    }
+
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                    const result = await response.json();
+                    alert('Income saved successfully!');
+                    console.log(result);
+
+                    // Clear the form and ID
+                    form.reset();
+                    incomeIdInput.value = '';
+                    editRowId = null;
+
+                    // Fetch and display the updated income list
+                    fetchIncome(userIdInput.value);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert(`Failed to save income: ${error.message}`);
+                }
+            });
+
+            // Function to fetch income and update the display
+            async function fetchIncome(userId) {
+                if (!userId) {
+                    console.warn('User ID is empty. Cannot fetch income.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`http://localhost:4000/income/${userId}`);
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                    const income = await response.json();
+                    displayIncome(income);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert(`Failed to fetch income: ${error.message}`);
+                }
+            }
+
+            // Function to display income
+            function displayIncome(income) {
+                incomeTableBody.innerHTML = ''; 
+                if (income.length === 0) {
+                    incomeTableBody.innerHTML = '<tr><td colspan="4">No income records found</td></tr>';
+                    return;
+                }
+                income.forEach(record => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${record.source}</td>
+                        <td>${record.amount}</td>
+                        <td>${record.date}</td>
+                        <td class="action-buttons">
+                            <button class="edit-btn" data-id="${record.id}">Edit</button>
+                            <button class="delete-btn" data-id="${record.id}">Delete</button>
+                        </td>
+                    `;
+                    incomeTableBody.appendChild(row);
+                });
+
+                // Attach event listeners to new buttons
+                document.querySelectorAll('.edit-btn').forEach(button => {
+                    button.addEventListener('click', handleEdit);
+                });
+                document.querySelectorAll('.delete-btn').forEach(button => {
+                    button.addEventListener('click', handleDelete);
+                });
+            }
+
+            // Handle edit button click
+            function handleEdit(event) {
+                const id = event.target.dataset.id;
+                const row = event.target.closest('tr');
+                const source = row.children[0].textContent;
+                const amount = row.children[1].textContent; 
+                const date = row.children[2].textContent;
+
+                // Fill form with the current values
+                document.querySelector('input[name="source"]').value = source;
+                document.querySelector('input[name="amount"]').value = amount;
+                document.querySelector('input[name="date"]').value = date;
+                document.getElementById('user_id').value = userIdInput.value; 
+                incomeIdInput.value = id; 
+                editRowId = id; 
+            }
+
+            // Handle delete button click
+            async function handleDelete(event) {
+                const id = event.target.dataset.id;
+                const userId = document.getElementById('user_id').value;
+
+                try {
+                    const response = await fetch(`http://localhost:4000/income/${id}`, {
+                        method: 'DELETE',
+                    });
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                    alert('Income deleted successfully!');
+                    fetchIncome(userId);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert(`Failed to delete income: ${error.message}`);
+                }
+            }
+
+            // Fetch income when a user ID is entered (if needed)
+            userIdInput.addEventListener('change', (event) => {
+                const userId = event.target.value;
+                fetchIncome(userId);
+            });
+        });
+    </script>
+</body>
+</html>

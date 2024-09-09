@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Savings Tracker</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+   <!-- Savings Form -->
+   <form id="addSavingsForm">
+       <input type="text" name="user_id" id="user_id" placeholder="Enter User ID" required>
+       <input type="text" name="goal" id="goal" placeholder="Enter Savings goal" required>
+       <input type="number" name="amount" placeholder="Enter Amount" required>
+       <input type="date" name="date" id="dateField" required>
+       <button type="submit">Add Savings</button>
+   </form> 
+
+   <!-- Section to Display Savings -->
+   <div id="savingsList">
+       <h2>My Savings</h2>
+       <table id="savingsTable">
+           <thead>
+               <tr>
+                   <th>Goal</th>
+                   <th>Amount</th>
+                   <th>Date</th>
+                   <th>Actions</th>
+               </tr>
+           </thead>
+           <tbody id="savingsItems">
+               <!-- Savings items will be dynamically inserted here -->
+           </tbody>
+       </table>
+   </div>
+
+   <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('addSavingsForm');
+        const dateField = document.getElementById('dateField');
+        const savingsTableBody = document.getElementById('savingsItems');
+        const userIdInput = document.getElementById('user_id');
+        let editRowId = null;
+
+        // Set today's date as the default value for the date input
+        const today = new Date().toISOString().split('T')[0];
+        dateField.value = today;
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault(); 
+
+            // Collect form data
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => {
+                data[key] = value;
+            });
+
+            let response;
+
+            try {
+                // Determine whether to add or update savings
+                if (editRowId) {
+                    // Update existing savings
+                    response = await fetch(`http://localhost:4000/savings/${editRowId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data),
+                    });
+                } else {
+                    // Add new savings
+                    response = await fetch('http://localhost:4000/savings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data),
+                    });
+                }
+
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                const result = await response.json();
+                alert('Savings saved successfully!');
+                console.log(result);
+
+                // Clear the form and ID
+                form.reset();
+                editRowId = null;
+
+                // Fetch and display the updated savings list
+                fetchSavings(userIdInput.value);
+            } catch (error) {
+                console.error('Error:', error);
+                alert(`Failed to save savings: ${error.message}`);
+            }
+        });
+
+        // Function to fetch savings and update the display
+        async function fetchSavings(userId) {
+            if (!userId) {
+                console.warn('User ID is empty. Cannot fetch savings.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`http://localhost:4000/savings/${userId}`);
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                const savings = await response.json();
+                displaySavings(savings);
+            } catch (error) {
+                console.error('Error:', error);
+                alert(`Failed to fetch savings: ${error.message}`);
+            }
+        }
+
+        // Function to display savings
+        function displaySavings(savings) {
+            savingsTableBody.innerHTML = ''; 
+            if (savings.length === 0) {
+                savingsTableBody.innerHTML = '<tr><td colspan="4">No savings found</td></tr>';
+                return;
+            }
+            savings.forEach(saving => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${saving.goal}</td>
+                    <td>${saving.amount}</td>
+                    <td>${saving.date}</td>
+                    <td>
+                        <button class="button edit-btn" data-id="${saving.id}">Edit</button>
+                        <button class="button delete-btn" data-id="${saving.id}">Delete</button>
+                    </td>
+                `;
+                savingsTableBody.appendChild(row);
+            });
+
+            // Attach event listeners to new buttons
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', handleEdit);
+            });
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', handleDelete);
+            });
+        }
+
+        // Handle edit button click
+        function handleEdit(event) {
+            const id = event.target.dataset.id;
+            const row = event.target.closest('tr');
+            const goal = row.children[0].textContent;
+            const amount = row.children[1].textContent.slice(1); // Remove dollar sign
+            const date = row.children[2].textContent;
+
+            // Fill form with the current values
+            document.getElementById('goal').value = goal;
+            document.querySelector('input[name="amount"]').value = amount;
+            document.getElementById('dateField').value = date;
+            document.getElementById('user_id').value = userIdInput.value; 
+            editRowId = id; // Set the ID for updating
+        }
+
+        // Handle delete button click
+        async function handleDelete(event) {
+            const id = event.target.dataset.id;
+            const userId = document.getElementById('user_id').value;
+
+            try {
+                const response = await fetch(`http://localhost:4000/savings/${id}`, {
+                    method: 'DELETE',
+                });
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                alert('Savings deleted successfully!');
+                fetchSavings(userId);
+            } catch (error) {
+                console.error('Error:', error);
+                alert(`Failed to delete savings: ${error.message}`);
+            }
+        }
+
+        // Fetch savings when a user ID is entered
+        userIdInput.addEventListener('change', (event) => {
+            const userId = event.target.value;
+            fetchSavings(userId);
+        });
+    });
+   </script>
+</body>
+</html>

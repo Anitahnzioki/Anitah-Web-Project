@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manage Expenses in My Expense Tracker</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <header>
+        <h1>Expenses</h1>
+    </header>
+    <form id="addExpenseForm">
+        <div class="addExpense">
+            <input
+                type="text"
+                placeholder="Enter user ID"
+                id="user_id"
+                name="user_id"
+                required
+            />
+            <input
+                type="text"
+                placeholder="Enter Category"
+                id="category"
+                name="category"
+                required
+            />
+            <input
+                type="number"
+                placeholder="Enter Amount"
+                id="amount"
+                name="amount"
+                required
+            />
+            <input
+            type="date"
+            placeholder="Enter date "
+            id="date"
+            name="date"
+            required
+        />
+            <button type="submit">Add Expense</button>
+        </div>
+    </form>
+    <main>
+        <table id="expenseTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="expensesTable">
+                <tr></tr>
+            </tbody>
+        </table>
+
+        <script src="script.js"></script>
+    </main>
+</body>
+</html>
