@@ -5,11 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Savings Tracker</title>
     <link rel="stylesheet" href="style.css" />
+
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        .action-buttons button {
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
    <!-- Savings Form -->
    <form id="addSavingsForm">
-       <input type="text" name="user_id" id="user_id" placeholder="Enter User ID" required>
+       <input type="hidden" name="id" id="savings_id">
+       <input type="text" name="user_id" id="user_id" placeholder="Enter User ID" required readonly>
        <input type="text" name="goal" id="goal" placeholder="Enter Savings goal" required>
        <input type="number" name="amount" placeholder="Enter Amount" required>
        <input type="date" name="date" id="dateField" required>
@@ -35,159 +57,196 @@
    </div>
 
    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const form = document.getElementById('addSavingsForm');
-        const dateField = document.getElementById('dateField');
-        const savingsTableBody = document.getElementById('savingsItems');
-        const userIdInput = document.getElementById('user_id');
-        let editRowId = null;
+       // Custom JWT Decoder
+       const decodeJWT = (token) => {
+           try {
+               const base64Url = token.split(".")[1];
+               const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+               const jsonPayload = decodeURIComponent(
+                   atob(base64)
+                       .split("")
+                       .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+                       .join("")
+               );
+               return JSON.parse(jsonPayload);
+           } catch (e) {
+               console.error("Error decoding JWT:", e);
+               return null;
+           }
+       };
 
-        // Set today's date as the default value for the date input
-        const today = new Date().toISOString().split('T')[0];
-        dateField.value = today;
+       document.addEventListener('DOMContentLoaded', () => {
+           const form = document.getElementById('addSavingsForm');
+           const dateField = document.getElementById('dateField');
+           const savingsTableBody = document.getElementById('savingsItems');
+           const userIdInput = document.getElementById('user_id');
+           const savingsIdInput = document.getElementById('savings_id');
+           let editRowId = null;
 
-        form.addEventListener('submit', async (event) => {
-            event.preventDefault(); 
+           // Set today's date as the default value for the date input
+           const today = new Date().toISOString().split('T')[0];
+           dateField.value = today;
 
-            // Collect form data
-            const formData = new FormData(form);
-            const data = {};
-            formData.forEach((value, key) => {
-                data[key] = value;
-            });
+           // Decode the token stored in localStorage
+           const token = localStorage.getItem('token');
+           let decodedToken;
 
-            let response;
+           if (token) {
+               decodedToken = decodeJWT(token);  // Use custom decode function
+               const userId = decodedToken?.id;   // Assuming the token payload has an id field
 
-            try {
-                // Determine whether to add or update savings
-                if (editRowId) {
-                    // Update existing savings
-                    response = await fetch(`http://localhost:4000/savings/${editRowId}`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(data),
-                    });
-                } else {
-                    // Add new savings
-                    response = await fetch('http://localhost:4000/savings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(data),
-                    });
-                }
+               if (userId) {
+                   userIdInput.value = userId;
+                   fetchSavings(userId);  // Fetch savings based on the decoded user ID
+               }
+           } else {
+               alert('No token found. Please log in.');
+           }
 
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+           form.addEventListener('submit', async (event) => {
+               event.preventDefault(); 
 
-                const result = await response.json();
-                alert('Savings saved successfully!');
-                console.log(result);
+               // Collect form data
+               const formData = new FormData(form);
+               const data = {};
+               formData.forEach((value, key) => {
+                   data[key] = value;
+               });
 
-                // Clear the form and ID
-                form.reset();
-                editRowId = null;
+               let response;
 
-                // Fetch and display the updated savings list
-                fetchSavings(userIdInput.value);
-            } catch (error) {
-                console.error('Error:', error);
-                alert(`Failed to save savings: ${error.message}`);
-            }
-        });
+               try {
+                   // Determine whether to add or update savings
+                   if (editRowId) {
+                       // Update existing savings
+                       response = await fetch(`http://localhost:4000/savings/${editRowId}`, {
+                           method: 'PATCH',
+                           headers: {
+                               'Content-Type': 'application/json',
+                           },
+                           body: JSON.stringify(data),
+                       });
+                   } else {
+                       // Add new savings
+                       response = await fetch('http://localhost:4000/savings', {
+                           method: 'POST',
+                           headers: {
+                               'Content-Type': 'application/json',
+                           },
+                           body: JSON.stringify(data),
+                       });
+                   }
 
-        // Function to fetch savings and update the display
-        async function fetchSavings(userId) {
-            if (!userId) {
-                console.warn('User ID is empty. Cannot fetch savings.');
-                return;
-            }
+                   if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
 
-            try {
-                const response = await fetch(`http://localhost:4000/savings/${userId}`);
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                   const result = await response.json();
+                   alert('Savings saved successfully!');
+                   console.log(result);
 
-                const savings = await response.json();
-                displaySavings(savings);
-            } catch (error) {
-                console.error('Error:', error);
-                alert(`Failed to fetch savings: ${error.message}`);
-            }
-        }
+                   // Clear the form and ID
+                   form.reset();
+                   savingsIdInput.value = '';
+                   editRowId = null;
 
-        // Function to display savings
-        function displaySavings(savings) {
-            savingsTableBody.innerHTML = ''; 
-            if (savings.length === 0) {
-                savingsTableBody.innerHTML = '<tr><td colspan="4">No savings found</td></tr>';
-                return;
-            }
-            savings.forEach(saving => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${saving.goal}</td>
-                    <td>${saving.amount}</td>
-                    <td>${saving.date}</td>
-                    <td>
-                        <button class="button edit-btn" data-id="${saving.id}">Edit</button>
-                        <button class="button delete-btn" data-id="${saving.id}">Delete</button>
-                    </td>
-                `;
-                savingsTableBody.appendChild(row);
-            });
+                   // Fetch and display the updated savings list
+                   fetchSavings(userIdInput.value);
+               } catch (error) {
+                   console.error('Error:', error);
+                   alert(`Failed to save savings: ${error.message}`);
+               }
+           });
 
-            // Attach event listeners to new buttons
-            document.querySelectorAll('.edit-btn').forEach(button => {
-                button.addEventListener('click', handleEdit);
-            });
-            document.querySelectorAll('.delete-btn').forEach(button => {
-                button.addEventListener('click', handleDelete);
-            });
-        }
+           // Function to fetch savings and update the display
+           async function fetchSavings(userId) {
+               if (!userId) {
+                   console.warn('User ID is empty. Cannot fetch savings.');
+                   return;
+               }
 
-        // Handle edit button click
-        function handleEdit(event) {
-            const id = event.target.dataset.id;
-            const row = event.target.closest('tr');
-            const goal = row.children[0].textContent;
-            const amount = row.children[1].textContent.slice(1); // Remove dollar sign
-            const date = row.children[2].textContent;
+               try {
+                   const response = await fetch(`http://localhost:4000/savings/${userId}`);
+                   if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
 
-            // Fill form with the current values
-            document.getElementById('goal').value = goal;
-            document.querySelector('input[name="amount"]').value = amount;
-            document.getElementById('dateField').value = date;
-            document.getElementById('user_id').value = userIdInput.value; 
-            editRowId = id; // Set the ID for updating
-        }
+                   const savings = await response.json();
+                   displaySavings(savings);
+               } catch (error) {
+                   console.error('Error:', error);
+                   alert(`Failed to fetch savings: ${error.message}`);
+               }
+           }
 
-        // Handle delete button click
-        async function handleDelete(event) {
-            const id = event.target.dataset.id;
-            const userId = document.getElementById('user_id').value;
+           // Function to display savings
+           function displaySavings(savings) {
+               savingsTableBody.innerHTML = ''; 
+               if (savings.length === 0) {
+                   savingsTableBody.innerHTML = '<tr><td colspan="4">No savings found</td></tr>';
+                   return;
+               }
+               savings.forEach(saving => {
+                   const row = document.createElement('tr');
+                   row.innerHTML = `
+                       <td>${saving.goal}</td>
+                       <td>${saving.amount}</td>
+                       <td>${saving.date}</td>
+                       <td class="action-buttons">
+                           <button class="edit-btn" data-id="${saving.id}">Edit</button>
+                           <button class="delete-btn" data-id="${saving.id}">Delete</button>
+                       </td>
+                   `;
+                   savingsTableBody.appendChild(row);
+               });
 
-            try {
-                const response = await fetch(`http://localhost:4000/savings/${id}`, {
-                    method: 'DELETE',
-                });
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+               // Attach event listeners to new buttons
+               document.querySelectorAll('.edit-btn').forEach(button => {
+                   button.addEventListener('click', handleEdit);
+               });
+               document.querySelectorAll('.delete-btn').forEach(button => {
+                   button.addEventListener('click', handleDelete);
+               });
+           }
 
-                alert('Savings deleted successfully!');
-                fetchSavings(userId);
-            } catch (error) {
-                console.error('Error:', error);
-                alert(`Failed to delete savings: ${error.message}`);
-            }
-        }
+           // Handle edit button click
+           function handleEdit(event) {
+               const id = event.target.dataset.id;
+               const row = event.target.closest('tr');
+               const goal = row.children[0].textContent;
+               const amount = row.children[1].textContent;
+               const date = row.children[2].textContent;
 
-        // Fetch savings when a user ID is entered
-        userIdInput.addEventListener('change', (event) => {
-            const userId = event.target.value;
-            fetchSavings(userId);
-        });
-    });
+               // Fill form with the current values
+               document.getElementById('goal').value = goal;
+               document.querySelector('input[name="amount"]').value = amount;
+               document.getElementById('dateField').value = date;
+               document.getElementById('user_id').value = userIdInput.value; 
+               savingsIdInput.value = id; 
+               editRowId = id; 
+           }
+
+           // Handle delete button click
+           async function handleDelete(event) {
+               const id = event.target.dataset.id;
+               const userId = document.getElementById('user_id').value;
+
+               try {
+                   const response = await fetch(`http://localhost:4000/savings/${id}`, {
+                       method: 'DELETE',
+                   });
+                   if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+                   alert('Savings deleted successfully!');
+                   fetchSavings(userId);
+               } catch (error) {
+                   console.error('Error:', error);
+                   alert(`Failed to delete savings: ${error.message}`);
+               }
+           }
+
+           // Fetch savings when a user ID is entered (if needed)
+           userIdInput.addEventListener('change', (event) => {
+               const userId = event.target.value;
+               fetchSavings(userId);
+           });
+       });
    </script>
 </body>
 </html>
